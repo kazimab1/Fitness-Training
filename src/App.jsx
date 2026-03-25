@@ -3,13 +3,14 @@ import { motion } from 'framer-motion'
 import {
   CalendarDays,
   CheckCircle2,
+  ChevronLeft,
   Dumbbell,
   FileText,
   FileUp,
   Flame,
   HeartPulse,
+  Home,
   Info,
-  RotateCcw,
   Salad,
   ShieldAlert,
   Sparkles,
@@ -21,43 +22,43 @@ import workerSrc from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 
 GlobalWorkerOptions.workerSrc = workerSrc
 
-const STORAGE_KEY = 'fitness-trainer-plan-v1'
-const DONE_KEY = 'fitness-trainer-progress-v1'
+const STORAGE_KEY = 'fitness-trainer-plan-v2'
+const DONE_KEY = 'fitness-trainer-progress-v2'
 
 const DEFAULT_PLAN = {
-  title: 'Your Plan',
+  title: 'YOUR PLAN',
   subtitle: 'Week 1 · Fat Loss & Strength',
-  exerciseSchedule: '7-day fat loss and strength programme',
-  mealPlan: '1,600 to 1,750 kcal per day · High protein · Whole foods',
+  exerciseSchedule: '7-day fat loss & strength programme',
+  mealPlan: '~1,600–1,750 kcal/day · High protein · Whole foods',
   calories: 1700,
   protein: '130g',
   carbs: '160g',
   fats: '55g',
   cardioSessions: '3 sessions',
-  targetLoss: '0.5 to 0.75 kg per week',
+  targetLoss: '0.5–0.75 kg/wk',
   guidelines: [
     'Prioritize protein at every meal.',
     'Train with intent and maintain clean form.',
-    'Aim for 7,000 to 10,000 daily steps.',
+    'Aim for 7,000–10,000 daily steps.',
     'Hydrate well and sleep at least 7 hours.'
   ],
   healthNote: [
-    'Consult your physician before starting, especially before intense cardio.',
-    'Adjust the plan if your recovery, pain, or energy levels worsen.',
-    'Stop immediately if you feel chest pain, dizziness, or unusual shortness of breath.'
+    'Consult your GP before starting — especially for cardiovascular workouts.',
+    'This plan is general guidance — adjust based on your body\'s response.',
+    'Stop if you feel chest pain, dizziness, or unusual breathlessness.'
   ],
   days: [
     {
       day: 'Monday',
       workout: 'Lower Body Strength',
-      details: 'Squats, Romanian deadlifts, lunges, calf raises, core finisher',
+      details: 'Squats, RDLs, lunges, calf raises, core finisher',
       meals: 'High-protein breakfast, lean lunch, balanced dinner',
       tip: 'Use a controlled tempo and focus on range of motion.'
     },
     {
       day: 'Tuesday',
-      workout: 'Zone 2 Cardio and Mobility',
-      details: '30 to 40 minutes brisk walk or cycling plus 10 minutes mobility',
+      workout: 'Zone 2 Cardio + Mobility',
+      details: '30–40 min brisk walk or cycling, 10 min mobility',
       meals: 'Keep calories steady and fiber high',
       tip: 'Cardio should feel sustainable, not maximal.'
     },
@@ -66,7 +67,7 @@ const DEFAULT_PLAN = {
       workout: 'Upper Body Strength',
       details: 'Press, row, pulldown, shoulders, biceps, triceps',
       meals: 'Prioritize protein post-workout',
-      tip: 'Leave 1 to 2 reps in reserve on main lifts.'
+      tip: 'Leave 1–2 reps in reserve on main lifts.'
     },
     {
       day: 'Thursday',
@@ -78,25 +79,52 @@ const DEFAULT_PLAN = {
     {
       day: 'Friday',
       workout: 'Full Body Conditioning',
-      details: 'Circuit of goblet squat, push-ups, rows, carries, bike sprints',
+      details: 'Circuit: goblet squat, push-ups, rows, carries, bike sprints',
       meals: 'Pre-workout carbs, protein throughout the day',
       tip: 'Keep rest periods honest and consistent.'
     },
     {
       day: 'Saturday',
       workout: 'Cardio Intervals',
-      details: '6 to 8 intervals with full easy recoveries',
+      details: '6–8 intervals with full easy recoveries',
       meals: 'Front-load hydration and electrolytes',
       tip: 'Push intensity only if recovery is good.'
     },
     {
       day: 'Sunday',
       workout: 'Rest Day',
-      details: 'Walk, meal prep, reflection, bodyweight mobility',
+      details: 'Walk, meal prep, reflection, mobility',
       meals: 'Stay consistent and prepare for the next week',
       tip: 'A great week starts with a prepared Sunday.'
     }
   ]
+}
+
+const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+
+function cleanText(value) {
+  return String(value || '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\u00a0/g, ' ')
+    .trim()
+}
+
+function splitLines(text) {
+  return String(text || '')
+    .split(/\r?\n/)
+    .map((line) => cleanText(line))
+    .filter(Boolean)
+}
+
+function dedupeLines(lines) {
+  const seen = new Set()
+  return lines.filter((line) => {
+    const key = line.toLowerCase()
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
 }
 
 function extractNumber(text, fallback) {
@@ -105,111 +133,162 @@ function extractNumber(text, fallback) {
   return match ? Number(match[1].replace(/,/g, '')) : fallback
 }
 
-function cleanText(value) {
-  return String(value || '')
-    .replace(/<[^>]*>/g, ' ')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
-
-function splitLines(text) {
-  return String(text || '')
-    .split(/\n|\r/)
-    .map((line) => cleanText(line))
-    .filter(Boolean)
-}
-
-function parseHtmlToText(html) {
-  const parser = new DOMParser()
-  const doc = parser.parseFromString(html, 'text/html')
-  return cleanText(doc.body?.innerText || doc.body?.textContent || html)
-    .replace(/\.\s+/g, '.\n')
-    .replace(/:\s+/g, ': ')
+function pickMatch(text, regex, fallback = '') {
+  const match = String(text || '').match(regex)
+  return match?.[1]?.trim() || fallback
 }
 
 function findLine(lines, patterns) {
   return lines.find((line) => patterns.some((pattern) => pattern.test(line)))
 }
 
-function pickAfterLabel(text, labelRegex, fallback = '') {
-  const match = String(text || '').match(labelRegex)
-  return match?.[1]?.trim() || fallback
+function extractHtmlLines(html) {
+  const parser = new DOMParser()
+  const doc = parser.parseFromString(html, 'text/html')
+  const selectors = [
+    'h1',
+    'h2',
+    'h3',
+    'h4',
+    'p',
+    'li',
+    'button',
+    '[data-day]',
+    '.day-card',
+    '.meal-card',
+    '.tip-card'
+  ]
+
+  let nodes = [...doc.body.querySelectorAll(selectors.join(','))]
+  if (nodes.length === 0) {
+    nodes = [...doc.body.querySelectorAll('*')].filter((node) => node.children.length === 0)
+  }
+
+  const lines = nodes
+    .map((node) => cleanText(node.textContent))
+    .filter(Boolean)
+
+  if (lines.length === 0) {
+    return splitLines(doc.body?.textContent || html)
+  }
+
+  return dedupeLines(lines)
+}
+
+function parseHtmlToText(html) {
+  return extractHtmlLines(html).join('\n')
+}
+
+function inferWeekPlan(lines, fullText) {
+  const lowerLines = lines.map((line) => line.toLowerCase())
+  const foundDayIndexes = lowerLines
+    .map((line, index) => ({ line, index }))
+    .filter(({ line }) => WEEKDAYS.some((day) => line.includes(day.toLowerCase())))
+
+  if (foundDayIndexes.length) {
+    return foundDayIndexes.slice(0, 7).map((entry, index, arr) => {
+      const start = entry.index
+      const end = arr[index + 1]?.index ?? Math.min(lines.length, start + 6)
+      const block = lines.slice(start, end)
+      const template = DEFAULT_PLAN.days[index] || DEFAULT_PLAN.days[0]
+      return {
+        day: WEEKDAYS.find((day) => block[0]?.toLowerCase().includes(day.toLowerCase())) || template.day,
+        workout: block[1] || template.workout,
+        details: block.slice(2, 4).join(' · ') || template.details,
+        meals: block.find((line) => /meal|breakfast|lunch|dinner|protein|calorie/i.test(line)) || template.meals,
+        tip: block.find((line) => /tip|focus|remember|tempo|hydration|sleep|recovery/i.test(line)) || template.tip,
+      }
+    })
+  }
+
+  const candidateLines = lines.filter((line) => /push|pull|legs|upper|lower|cardio|recovery|rest|conditioning/i.test(line))
+  if (candidateLines.length) {
+    return DEFAULT_PLAN.days.map((day, index) => ({
+      ...day,
+      workout: candidateLines[index] || day.workout
+    }))
+  }
+
+  const bodyPattern = /(monday|tuesday|wednesday|thursday|friday|saturday|sunday)/ig
+  if (bodyPattern.test(fullText)) {
+    return DEFAULT_PLAN.days
+  }
+
+  return DEFAULT_PLAN.days
 }
 
 function normalizeImportedPlan(sourceText, sourceType = 'text') {
   const text = String(sourceText || '')
   const lines = splitLines(text)
+  const fullText = lines.join('\n')
 
   const title =
-    lines[0] ||
-    pickAfterLabel(text, /(?:title|plan)\s*[:\-]\s*([^\n]+)/i, DEFAULT_PLAN.title)
+    findLine(lines.slice(0, 5), [/your plan/i, /fitness/i, /plan/i]) ||
+    pickMatch(fullText, /(?:title|plan)\s*[:\-]\s*([^\n]+)/i, DEFAULT_PLAN.title) ||
+    DEFAULT_PLAN.title
 
   const subtitle =
-    findLine(lines, [/week\s*\d+/i, /strength/i, /fat loss/i, /muscle/i, /hypertrophy/i]) ||
+    findLine(lines, [/week\s*\d+/i, /fat loss/i, /strength/i, /muscle/i, /hypertrophy/i]) ||
     DEFAULT_PLAN.subtitle
 
-  const caloriesLine = findLine(lines, [/calories/i, /kcal/i])
-  const proteinLine = findLine(lines, [/protein/i])
-  const carbsLine = findLine(lines, [/carbs?/i, /carbohydrates/i])
-  const fatsLine = findLine(lines, [/fats?/i])
-  const cardioLine = findLine(lines, [/cardio/i])
-  const targetLossLine = findLine(lines, [/target loss/i, /weight loss/i, /kg\/wk/i, /lb\/wk/i])
-  const exerciseLine = findLine(lines, [/exercise schedule/i, /workout schedule/i, /programme/i, /program/i])
-  const mealLine = findLine(lines, [/meal plan/i, /nutrition/i, /diet/i])
+  const exerciseSchedule =
+    findLine(lines, [/exercise schedule/i, /workout schedule/i, /programme/i, /program/i]) ||
+    DEFAULT_PLAN.exerciseSchedule
 
-  const weekdays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
-  const foundDayIndexes = lines
-    .map((line, index) => ({ line: line.toLowerCase(), index }))
-    .filter(({ line }) => weekdays.some((d) => line.includes(d)))
+  const mealPlan =
+    findLine(lines, [/meal plan/i, /nutrition/i, /diet/i, /whole foods/i, /high protein/i]) ||
+    DEFAULT_PLAN.mealPlan
 
-  let days = []
-  if (foundDayIndexes.length > 0) {
-    days = foundDayIndexes.slice(0, 7).map((entry, i, arr) => {
-      const start = entry.index
-      const end = arr[i + 1]?.index ?? Math.min(lines.length, start + 4)
-      const block = lines.slice(start, end)
-      const heading = block[0] || DEFAULT_PLAN.days[i]?.day || `Day ${i + 1}`
-      const workout = block[1] || DEFAULT_PLAN.days[i]?.workout || 'Workout'
-      const details = block.slice(2, 5).join(' · ') || DEFAULT_PLAN.days[i]?.details || 'Details not provided'
-      return {
-        day: heading,
-        workout,
-        details,
-        meals: DEFAULT_PLAN.days[i]?.meals || 'Meal guidance not provided',
-        tip: DEFAULT_PLAN.days[i]?.tip || 'Stay consistent and track your recovery.'
-      }
-    })
-  }
+  const calories =
+    extractNumber(findLine(lines, [/daily calories/i, /kcal/i, /calories/i]), DEFAULT_PLAN.calories)
 
-  if (days.length === 0) {
-    const listCandidates = lines.filter((line) => /day\s*\d+|push|pull|legs|upper|lower|cardio|recovery|rest/i.test(line))
-    days = DEFAULT_PLAN.days.map((d, i) => ({
-      ...d,
-      workout: listCandidates[i] || d.workout
-    }))
-  }
+  const protein =
+    pickMatch(fullText, /protein(?:\s+goal)?[^\d]*(\d+\s*g)/i, DEFAULT_PLAN.protein) ||
+    DEFAULT_PLAN.protein
 
-  const guidelineStart = lines.findIndex((line) => /guidelines?|principles|notes/i.test(line))
-  const importedGuidelines = guidelineStart >= 0 ? lines.slice(guidelineStart + 1, guidelineStart + 5) : []
-  const safetyLines = lines
-    .filter((line) => /consult|doctor|physician|stop if|dizziness|breathlessness|pain/i.test(line))
-    .slice(0, 3)
+  const carbs =
+    pickMatch(fullText, /carbs?|carbohydrates[^\d]*(\d+\s*g)/i, DEFAULT_PLAN.carbs) ||
+    DEFAULT_PLAN.carbs
+
+  const fats =
+    pickMatch(fullText, /fats?[^\d]*(\d+\s*g)/i, DEFAULT_PLAN.fats) ||
+    DEFAULT_PLAN.fats
+
+  const cardioSessions =
+    findLine(lines, [/cardio\s*\/\s*week/i, /sessions/i, /cardio/i]) ||
+    DEFAULT_PLAN.cardioSessions
+
+  const targetLoss =
+    findLine(lines, [/target loss/i, /kg\/wk/i, /lb\/wk/i, /weight loss/i]) ||
+    DEFAULT_PLAN.targetLoss
+
+  const guidelineHeaderIndex = lines.findIndex((line) => /key guidelines|guidelines|principles/i.test(line))
+  const healthHeaderIndex = lines.findIndex((line) => /health note|health|consult/i.test(line))
+
+  const guidelines = guidelineHeaderIndex >= 0
+    ? lines.slice(guidelineHeaderIndex + 1, guidelineHeaderIndex + 5)
+    : DEFAULT_PLAN.guidelines
+
+  const healthNote = healthHeaderIndex >= 0
+    ? lines.slice(healthHeaderIndex + 1, healthHeaderIndex + 4)
+    : lines.filter((line) => /consult|stop if|dizziness|breathlessness|doctor|gp/i.test(line)).slice(0, 3)
 
   return {
     title,
     subtitle,
-    exerciseSchedule: exerciseLine || DEFAULT_PLAN.exerciseSchedule,
-    mealPlan: mealLine || DEFAULT_PLAN.mealPlan,
-    calories: extractNumber(caloriesLine, DEFAULT_PLAN.calories),
-    protein: pickAfterLabel(proteinLine || '', /protein[^\d]*(\d+\s*g?)/i, DEFAULT_PLAN.protein),
-    carbs: pickAfterLabel(carbsLine || '', /carbs?[^\d]*(\d+\s*g?)/i, DEFAULT_PLAN.carbs),
-    fats: pickAfterLabel(fatsLine || '', /fats?[^\d]*(\d+\s*g?)/i, DEFAULT_PLAN.fats),
-    cardioSessions: cardioLine || DEFAULT_PLAN.cardioSessions,
-    targetLoss: targetLossLine || DEFAULT_PLAN.targetLoss,
-    guidelines: importedGuidelines.length ? importedGuidelines : DEFAULT_PLAN.guidelines,
-    healthNote: safetyLines.length ? safetyLines : DEFAULT_PLAN.healthNote,
-    days,
+    exerciseSchedule,
+    mealPlan,
+    calories,
+    protein,
+    carbs,
+    fats,
+    cardioSessions,
+    targetLoss,
+    guidelines: healthHeaderIndex > -1 && guidelineHeaderIndex > -1 && healthHeaderIndex > guidelineHeaderIndex
+      ? guidelines
+      : DEFAULT_PLAN.guidelines,
+    healthNote: healthNote.length ? healthNote : DEFAULT_PLAN.healthNote,
+    days: inferWeekPlan(lines, fullText),
     importedFrom: sourceType,
     importedAt: new Date().toISOString(),
     rawSource: text.slice(0, 12000)
@@ -224,53 +303,63 @@ async function parsePdfText(file) {
   for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
     const page = await pdf.getPage(pageNumber)
     const content = await page.getTextContent()
-    const text = content.items
-      .map((item) => ('str' in item ? item.str : ''))
-      .join(' ')
-    pages.push(`Page ${pageNumber}\n${text}`)
+    const text = content.items.map((item) => ('str' in item ? item.str : '')).join(' ')
+    pages.push(text)
   }
 
-  return pages.join('\n\n')
+  return pages.join('\n')
 }
 
-function StatCard({ icon: Icon, label, value, subvalue }) {
+function BottomNav({ activeTab, setActiveTab }) {
+  const items = [
+    { id: 'home', label: 'Home', icon: Home },
+    { id: 'plan', label: 'Plan', icon: CalendarDays },
+    { id: 'meals', label: 'Meals', icon: Salad },
+    { id: 'tips', label: 'Tips', icon: Info },
+    { id: 'import', label: 'Import', icon: Upload }
+  ]
+
   return (
-    <section className="card stat-card">
-      <div className="icon-chip"><Icon size={18} /></div>
-      <div>
-        <p className="muted small">{label}</p>
-        <p className="stat-value">{value}</p>
-        {subvalue ? <p className="muted tiny">{subvalue}</p> : null}
-      </div>
-    </section>
+    <nav className="bottom-nav">
+      {items.map(({ id, label, icon: Icon }) => (
+        <button
+          key={id}
+          className={`nav-item ${activeTab === id ? 'nav-item-active' : ''}`}
+          onClick={() => setActiveTab(id)}
+          type="button"
+        >
+          <Icon size={18} />
+          <span>{label}</span>
+        </button>
+      ))}
+    </nav>
   )
 }
 
-function DayCard({ item, done, onToggle }) {
+function DayRow({ item, done, onToggle }) {
   return (
-    <section className="card day-card">
-      <div className="day-card__header">
+    <article className="plan-day-card">
+      <div className="plan-day-top">
         <div>
           <h3>{item.day}</h3>
-          <p className="muted">{item.workout}</p>
+          <p className="plan-day-workout">{item.workout}</p>
         </div>
-        <button className={`button ${done ? 'button-secondary' : ''}`} onClick={onToggle}>
-          <CheckCircle2 size={16} />
-          {done ? 'Done' : 'Mark Done'}
+        <button className={`pill-button ${done ? 'pill-button-done' : ''}`} onClick={onToggle} type="button">
+          {done ? '✓ Done' : 'Log Day Done'}
         </button>
       </div>
-      <div className="detail-block">
-        <strong>Workout Details</strong>
-        <p>{item.details}</p>
-      </div>
-      <div className="detail-block">
-        <strong>Meal Focus</strong>
-        <p>{item.meals}</p>
-      </div>
-      <div className="detail-block">
-        <strong>Coach Tip</strong>
-        <p>{item.tip}</p>
-      </div>
+      <p className="plan-day-details">{item.details}</p>
+      <p className="plan-day-tip">{item.tip}</p>
+    </article>
+  )
+}
+
+function InstallCard() {
+  return (
+    <section className="tracker-card install-card">
+      <h4>Install as an App</h4>
+      <p>Open this page in Safari, tap Share, then Add to Home Screen.</p>
+      <a className="install-button" href="#">Add to Home Screen</a>
     </section>
   )
 }
@@ -321,39 +410,30 @@ export default function App() {
   }, [doneDays, plan.days])
 
   const todayItem = useMemo(() => {
-    const todayIndex = new Date().getDay()
-    const normalized = todayIndex === 0 ? 6 : todayIndex - 1
+    const dayIndex = new Date().getDay()
+    const normalized = dayIndex === 0 ? 6 : dayIndex - 1
     return plan.days?.[normalized] || plan.days?.[0]
   }, [plan.days])
 
-  const tabs = [
-    { id: 'home', label: 'Home' },
-    { id: 'plan', label: 'Plan' },
-    { id: 'meals', label: 'Meals' },
-    { id: 'tips', label: 'Tips' },
-    { id: 'import', label: 'Import' }
-  ]
-
   const toggleDay = (index) => {
-    setDoneDays((current) =>
-      current.includes(index) ? current.filter((i) => i !== index) : [...current, index]
-    )
+    setDoneDays((current) => current.includes(index) ? current.filter((item) => item !== index) : [...current, index])
   }
 
-  const resetProgress = () => setDoneDays([])
+  const undoLast = () => {
+    setDoneDays((current) => current.slice(0, -1))
+  }
 
   const handleImportedText = (text, sourceType, sourceLabel) => {
     const parsed = normalizeImportedPlan(text, sourceType)
     setPlan(parsed)
     setImportPreview(text.slice(0, 4000))
     setImportStatus(`Imported ${sourceLabel} successfully.`)
-    setActiveTab('plan')
+    setActiveTab('home')
   }
 
   const importHtmlFile = async (file) => {
     const html = await file.text()
-    const text = parseHtmlToText(html)
-    handleImportedText(text, 'html', file.name)
+    handleImportedText(parseHtmlToText(html), 'html', file.name)
   }
 
   const importPdfFile = async (file) => {
@@ -381,7 +461,7 @@ export default function App() {
         throw new Error('Unsupported file type. Upload an HTML or PDF plan.')
       }
     } catch (error) {
-      setImportStatus(error.message || 'Import failed.')
+      setImportStatus(error?.message || 'Import failed.')
     } finally {
       setIsParsing(false)
       if (fileInputRef.current) fileInputRef.current.value = ''
@@ -394,317 +474,181 @@ export default function App() {
       return
     }
 
-    const text = parseHtmlToText(pastedHtml)
-    handleImportedText(text, 'html-paste', 'pasted HTML')
+    handleImportedText(parseHtmlToText(pastedHtml), 'html-paste', 'pasted HTML')
   }
 
   return (
-    <div className="app-shell">
-      <div className="container">
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.35 }}
-          className="layout"
-        >
-          <main className="main-column">
-            <section className="card hero-card">
-              <div className="hero-topline">
-                <HeartPulse size={16} />
-                <span>Personal Fitness Tracker</span>
+    <div className="tracker-shell">
+      <motion.main
+        className="phone-frame"
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.28 }}
+      >
+        <header className="tracker-header">
+          <p className="tracker-kicker">PERSONAL FITNESS TRACKER</p>
+          <h1>{plan.title}</h1>
+          <p className="tracker-subtitle">{plan.subtitle}</p>
+        </header>
+
+        <InstallCard />
+
+        <section className="tracker-card progress-card">
+          <div className="section-title-row">
+            <div>
+              <h2>WEEKLY PROGRESS</h2>
+              <p className="muted-text">Days done {doneDays.length} / {plan.days?.length || 7}</p>
+            </div>
+            <div className="progress-percent">{progress}%</div>
+          </div>
+
+          <div className="progress-actions">
+            <button className="ghost-button" onClick={undoLast} type="button">
+              <ChevronLeft size={16} /> Undo
+            </button>
+            <button className="dark-button" onClick={() => setActiveTab('plan')} type="button">
+              <CheckCircle2 size={16} /> Log Day Done
+            </button>
+          </div>
+        </section>
+
+        <section className="stats-panel">
+          <div className="stat-box"><Flame size={18} /><span>Daily Calories</span><strong>{plan.calories.toLocaleString()} kcal</strong></div>
+          <div className="stat-box"><Target size={18} /><span>Protein Goal</span><strong>{plan.protein} / day</strong></div>
+          <div className="stat-box"><Dumbbell size={18} /><span>Cardio / Week</span><strong>{plan.cardioSessions}</strong></div>
+          <div className="stat-box"><Salad size={18} /><span>Target Loss</span><strong>{plan.targetLoss}</strong></div>
+        </section>
+
+        {activeTab === 'home' && (
+          <div className="content-stack">
+            <section className="tracker-card today-card">
+              <h2>TODAY</h2>
+              <div className="today-workout">{todayItem?.workout || '—'}</div>
+            </section>
+
+            <section className="tracker-card info-card-grid">
+              <div>
+                <h3>Exercise Schedule</h3>
+                <p>{plan.exerciseSchedule}</p>
               </div>
-
-              <div className="hero-row">
-                <div>
-                  <h1>{plan.title}</h1>
-                  <p className="hero-subtitle">{plan.subtitle}</p>
-                </div>
-
-                <div className="badge-group">
-                  <span className="badge">
-                    {plan.importedFrom ? `Imported from ${plan.importedFrom}` : 'Default template'}
-                  </span>
-                  <span className="badge">
-                    <CalendarDays size={14} />
-                    7-Day Programme
-                  </span>
-                </div>
+              <div>
+                <h3>Meal Plan</h3>
+                <p>{plan.mealPlan}</p>
               </div>
-
-              <div className="stats-grid">
-                <StatCard icon={Flame} label="Daily Calories" value={`${plan.calories} kcal`} />
-                <StatCard icon={Target} label="Protein Goal" value={plan.protein} subvalue="per day" />
-                <StatCard icon={Dumbbell} label="Cardio / Week" value={plan.cardioSessions} />
-                <StatCard icon={Salad} label="Target Loss" value={plan.targetLoss} />
+              <div className="macro-grid">
+                <div><span>Calories</span><strong>{plan.calories.toLocaleString()}</strong></div>
+                <div><span>Protein</span><strong>{plan.protein}</strong></div>
+                <div><span>Carbs</span><strong>{plan.carbs}</strong></div>
+                <div><span>Fats</span><strong>{plan.fats}</strong></div>
               </div>
             </section>
 
-            <section className="card progress-card">
-              <div className="section-row">
-                <div>
-                  <h2>Weekly Progress</h2>
-                  <p className="muted">Days done {doneDays.length} / {plan.days?.length || 7}</p>
-                </div>
-                <div className="button-row">
-                  <button className="button button-secondary" onClick={resetProgress}>
-                    <RotateCcw size={16} />
-                    Reset
-                  </button>
-                  <button className="button" onClick={() => setActiveTab('import')}>
-                    <Upload size={16} />
-                    Import Plan
-                  </button>
-                </div>
-              </div>
-              <div className="progress-meta">
-                <span className="muted">Completion</span>
-                <strong>{progress}%</strong>
-              </div>
-              <div className="progress-track">
-                <div className="progress-fill" style={{ width: `${progress}%` }} />
-              </div>
-            </section>
-
-            <nav className="tab-bar">
-              {tabs.map((tab) => (
-                <button
-                  key={tab.id}
-                  className={`tab-button ${activeTab === tab.id ? 'tab-button-active' : ''}`}
-                  onClick={() => setActiveTab(tab.id)}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </nav>
-
-            {activeTab === 'home' && (
-              <section className="split-grid">
-                <article className="card">
-                  <h2>Today</h2>
-                  <p className="muted">Your focus for the current day</p>
-                  <div className="stack gap-lg">
-                    <div>
-                      <p className="small muted">Workout</p>
-                      <h3>{todayItem?.workout}</h3>
-                    </div>
-                    <div>
-                      <p className="small muted">Details</p>
-                      <p>{todayItem?.details}</p>
-                    </div>
-                    <div>
-                      <p className="small muted">Meal focus</p>
-                      <p>{todayItem?.meals}</p>
-                    </div>
-                  </div>
-                </article>
-
-                <article className="card">
-                  <h2>At a Glance</h2>
-                  <p className="muted">Core plan structure</p>
-                  <div className="stack gap-lg">
-                    <div>
-                      <strong>Exercise Schedule</strong>
-                      <p>{plan.exerciseSchedule}</p>
-                    </div>
-                    <div>
-                      <strong>Meal Plan</strong>
-                      <p>{plan.mealPlan}</p>
-                    </div>
-                    <div className="mini-grid">
-                      <div className="mini-card">
-                        <span className="tiny muted">Calories</span>
-                        <strong>{plan.calories}</strong>
-                      </div>
-                      <div className="mini-card">
-                        <span className="tiny muted">Protein</span>
-                        <strong>{plan.protein}</strong>
-                      </div>
-                      <div className="mini-card">
-                        <span className="tiny muted">Carbs</span>
-                        <strong>{plan.carbs}</strong>
-                      </div>
-                    </div>
-                  </div>
-                </article>
-              </section>
-            )}
-
-            {activeTab === 'plan' && (
-              <section className="stack gap-md">
-                {plan.days?.map((item, index) => (
-                  <DayCard
-                    key={`${item.day}-${index}`}
-                    item={item}
-                    done={doneDays.includes(index)}
-                    onToggle={() => toggleDay(index)}
-                  />
+            <section className="tracker-card">
+              <h2>Key Guidelines</h2>
+              <p className="muted-text">Principles for sustainable fat loss</p>
+              <div className="list-stack">
+                {plan.guidelines.map((item, index) => (
+                  <div className="plain-list-item" key={`guide-${index}`}>{item}</div>
                 ))}
-              </section>
-            )}
-
-            {activeTab === 'meals' && (
-              <section className="split-grid">
-                <article className="card">
-                  <h2>Nutrition Targets</h2>
-                  <p className="muted">Based on your imported or default plan</p>
-                  <div className="stats-grid two-col">
-                    <div className="mini-card tall"><span className="small muted">Calories</span><strong>{plan.calories}</strong></div>
-                    <div className="mini-card tall"><span className="small muted">Protein</span><strong>{plan.protein}</strong></div>
-                    <div className="mini-card tall"><span className="small muted">Carbs</span><strong>{plan.carbs}</strong></div>
-                    <div className="mini-card tall"><span className="small muted">Fats</span><strong>{plan.fats}</strong></div>
-                  </div>
-                </article>
-
-                <article className="card">
-                  <h2>Meal Plan Summary</h2>
-                  <p className="muted">{plan.mealPlan}</p>
-                  <div className="stack gap-sm">
-                    {plan.days?.map((item, index) => (
-                      <div key={`meal-${index}`} className="mini-card">
-                        <strong>{item.day}</strong>
-                        <p>{item.meals}</p>
-                      </div>
-                    ))}
-                  </div>
-                </article>
-              </section>
-            )}
-
-            {activeTab === 'tips' && (
-              <section className="split-grid">
-                <article className="card">
-                  <h2>Key Guidelines</h2>
-                  <p className="muted">Principles for sustainable progress</p>
-                  <div className="stack gap-sm">
-                    {plan.guidelines?.map((item, index) => (
-                      <div key={`guide-${index}`} className="list-item">
-                        <Info size={16} />
-                        <span>{item}</span>
-                      </div>
-                    ))}
-                  </div>
-                </article>
-
-                <article className="card">
-                  <h2>Health Note</h2>
-                  <p className="muted">Important safety reminders</p>
-                  <div className="stack gap-sm">
-                    {plan.healthNote?.map((item, index) => (
-                      <div key={`safety-${index}`} className="list-item warning">
-                        <ShieldAlert size={16} />
-                        <span>{item}</span>
-                      </div>
-                    ))}
-                  </div>
-                </article>
-              </section>
-            )}
-
-            {activeTab === 'import' && (
-              <section className="import-grid">
-                <article className="card">
-                  <h2>Import Fitness Plan</h2>
-                  <p className="muted">
-                    Upload an HTML or PDF plan. The app extracts text, rebuilds the weekly structure, and stores it locally.
-                  </p>
-
-                  <div className="upload-panel">
-                    <div className="icon-chip"><FileUp size={18} /></div>
-                    <div>
-                      <strong>Upload HTML or PDF</strong>
-                      <p className="muted small">Supported files: .html, .htm, .pdf</p>
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept=".html,.htm,.pdf,text/html,application/pdf"
-                        onChange={handleFileUpload}
-                        className="file-input"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="stack gap-sm">
-                    <p className="section-label"><FileText size={16} /> Or paste plan HTML</p>
-                    <textarea
-                      className="textarea"
-                      value={pastedHtml}
-                      onChange={(event) => setPastedHtml(event.target.value)}
-                      placeholder="Paste your fitness plan HTML here..."
-                    />
-                    <button className="button" onClick={handlePasteImport}>
-                      <Sparkles size={16} />
-                      Parse Plan
-                    </button>
-                  </div>
-
-                  <div className="mini-card">
-                    <strong>Status</strong>
-                    <p>{isParsing ? 'Parsing your file...' : importStatus}</p>
-                    {fileName ? <p className="tiny muted">Current file: {fileName}</p> : null}
-                  </div>
-                </article>
-
-                <article className="card">
-                  <h2>Imported Plan Preview</h2>
-                  <p className="muted">Review the extracted content and verify the generated structure.</p>
-                  <div className="stats-grid two-col">
-                    <div className="mini-card tall">
-                      <span className="small muted">Plan Title</span>
-                      <strong>{plan.title}</strong>
-                    </div>
-                    <div className="mini-card tall">
-                      <span className="small muted">Imported Source</span>
-                      <strong className="capitalize">{plan.importedFrom || 'default'}</strong>
-                    </div>
-                    <div className="mini-card tall">
-                      <span className="small muted">Calories</span>
-                      <strong>{plan.calories}</strong>
-                    </div>
-                    <div className="mini-card tall">
-                      <span className="small muted">Days Found</span>
-                      <strong>{plan.days?.length || 0}</strong>
-                    </div>
-                  </div>
-                  <div className="code-preview">
-                    <strong>Raw Extracted Text</strong>
-                    <pre>{importPreview || 'No imported content yet.'}</pre>
-                  </div>
-                </article>
-              </section>
-            )}
-          </main>
-
-          <aside className="side-column">
-            <section className="card">
-              <h2>Coach Dashboard</h2>
-              <p className="muted">A compact summary of the current plan</p>
-              <div className="stack gap-sm">
-                <div className="mini-card">
-                  <span className="small muted">Current workout schedule</span>
-                  <strong>{plan.exerciseSchedule}</strong>
-                </div>
-                <div className="mini-card">
-                  <span className="small muted">Current nutrition strategy</span>
-                  <strong>{plan.mealPlan}</strong>
-                </div>
-                <div className="mini-card">
-                  <span className="small muted">This week&apos;s adherence</span>
-                  <strong>{progress}% complete</strong>
-                </div>
               </div>
             </section>
 
-            <section className="card">
-              <h2>How the import works</h2>
-              <div className="stack gap-sm">
-                <div className="mini-card">1. Upload an HTML or PDF fitness plan.</div>
-                <div className="mini-card">2. The app extracts text and identifies calories, macros, schedule, and day blocks.</div>
-                <div className="mini-card">3. The parsed plan becomes the active program and persists in local storage.</div>
+            <section className="tracker-card warning-card">
+              <div className="warning-title"><ShieldAlert size={16} /> Health Note</div>
+              <div className="list-stack">
+                {plan.healthNote.map((item, index) => (
+                  <div className="warning-line" key={`warning-${index}`}>→ {item}</div>
+                ))}
               </div>
             </section>
-          </aside>
-        </motion.div>
-      </div>
+          </div>
+        )}
+
+        {activeTab === 'plan' && (
+          <section className="content-stack">
+            {plan.days.map((item, index) => (
+              <DayRow key={`${item.day}-${index}`} item={item} done={doneDays.includes(index)} onToggle={() => toggleDay(index)} />
+            ))}
+          </section>
+        )}
+
+        {activeTab === 'meals' && (
+          <section className="content-stack">
+            <section className="tracker-card">
+              <h2>Meal Plan</h2>
+              <p>{plan.mealPlan}</p>
+            </section>
+            {plan.days.map((item, index) => (
+              <section className="tracker-card meal-card" key={`meal-${index}`}>
+                <h3>{item.day}</h3>
+                <p>{item.meals}</p>
+              </section>
+            ))}
+          </section>
+        )}
+
+        {activeTab === 'tips' && (
+          <section className="content-stack">
+            {plan.days.map((item, index) => (
+              <section className="tracker-card" key={`tip-${index}`}>
+                <h3>{item.day}</h3>
+                <p>{item.tip}</p>
+              </section>
+            ))}
+          </section>
+        )}
+
+        {activeTab === 'import' && (
+          <section className="content-stack">
+            <section className="tracker-card import-card">
+              <h2>Import Plan</h2>
+              <p className="muted-text">Upload any fitness plan HTML or PDF — the app extracts and rebuilds it.</p>
+
+              <label className="upload-box">
+                <div className="upload-box-title"><FileUp size={18} /> Upload HTML or PDF</div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".html,.htm,.pdf,text/html,application/pdf"
+                  onChange={handleFileUpload}
+                />
+              </label>
+
+              <div className="import-section-label"><FileText size={16} /> OR PASTE HTML</div>
+              <textarea
+                className="import-textarea"
+                value={pastedHtml}
+                onChange={(event) => setPastedHtml(event.target.value)}
+                placeholder="Paste your fitness plan HTML here..."
+              />
+
+              <button className="dark-button full-width" onClick={handlePasteImport} type="button">
+                <Sparkles size={16} /> PARSE PLAN WITH AI
+              </button>
+
+              <div className="status-box">
+                <strong>Status</strong>
+                <p>{isParsing ? 'Parsing your file...' : importStatus}</p>
+                {fileName ? <p className="muted-text small-text">Current file: {fileName}</p> : null}
+              </div>
+            </section>
+
+            <section className="tracker-card">
+              <h2>Imported Preview</h2>
+              <p className="muted-text">Review the extracted content below.</p>
+              <div className="preview-grid">
+                <div><span>Plan Title</span><strong>{plan.title}</strong></div>
+                <div><span>Imported Source</span><strong>{plan.importedFrom || 'default'}</strong></div>
+                <div><span>Calories</span><strong>{plan.calories}</strong></div>
+                <div><span>Days Found</span><strong>{plan.days?.length || 0}</strong></div>
+              </div>
+              <pre className="preview-code">{importPreview || 'No imported content yet.'}</pre>
+            </section>
+          </section>
+        )}
+
+        <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} />
+      </motion.main>
     </div>
   )
 }
