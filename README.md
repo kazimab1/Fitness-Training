@@ -1,59 +1,30 @@
 # Fitness Trainer App
 
-A React + Vite fitness trainer application inspired by the reference tracker, with support for importing HTML and PDF fitness plans.
+This version is configured for GitHub Pages deployment.
 
-## Features
+## Important
+This repository is configured for the GitHub Pages URL:
 
-- Dashboard with calories, protein, cardio, and target loss summary
-- Weekly progress tracking with per-day completion
-- Plan, Meals, Tips, and Import views
-- HTML file import
-- PDF file import using `pdfjs-dist`
-- Pasted HTML parsing
-- Local storage persistence for the active plan and progress state
-- Included sample HTML plan for import testing
+`https://kazimab1.github.io/Fitness-Training/`
 
-## Getting Started
+If you rename the repository, update the `base` value in `vite.config.js` and the `start_url` / manifest path in `index.html` and `public/manifest.webmanifest`.
 
+## Deploy with GitHub Pages
+1. Push this project to the `main` branch.
+2. In GitHub, open **Settings -> Pages**.
+3. Under **Build and deployment**, set **Source** to **GitHub Actions**.
+4. Wait for the **Deploy to GitHub Pages** workflow to finish.
+5. Open `https://kazimab1.github.io/Fitness-Training/`.
+
+## Local development
 ```bash
 npm install
 npm run dev
 ```
 
-Open the local Vite URL shown in your terminal.
-
-## Build for Production
-
+## Build locally
 ```bash
+npm install
 npm run build
 npm run preview
-```
-
-## Import Notes
-
-- Best results come from text-based HTML and text-based PDFs.
-- Scanned PDFs without embedded text may need OCR or a backend parser later.
-- The current parser normalizes extracted text into a weekly structure using heuristics.
-
-## Test Import File
-
-Use the included file below from the app's import page:
-
-```text
-sample-plans/sample-fitness-plan.html
-```
-
-## Project Structure
-
-```text
-fitness-trainer-app/
-  index.html
-  package.json
-  vite.config.js
-  src/
-    App.jsx
-    main.jsx
-    styles.css
-  sample-plans/
-    sample-fitness-plan.html
 ```

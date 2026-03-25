@@ -1,0 +1,10 @@
+{
+  "name": "Fitness Trainer App",
+  "short_name": "Fitness Trainer",
+  "start_url": "/Fitness-Training/",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#0f172a",
+  "description": "A personal fitness trainer application with workout tracking and HTML/PDF fitness plan import.",
+  "icons": []
+}
